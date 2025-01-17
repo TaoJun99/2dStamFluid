@@ -21,6 +21,12 @@ unsigned int quadIndices[] = {
         2, 3, 0
 };
 
+// Global variables
+GLuint addDyeShaderProgram;
+GLuint texture;
+GLuint framebuffer;
+GLuint VAO, VBO, EBO;
+
 GLuint compileShader(const std::string& source, GLenum shaderType) {
     GLuint shader = glCreateShader(shaderType);
     const char* src = source.c_str();
@@ -70,6 +76,49 @@ GLuint createShaderProgram(const std::string& vertexPath, const std::string& fra
     return program;
 }
 
+void addDye(GLFWwindow *window, bool click) {
+    // Get normalized mouse coordinates
+    double mouseX;
+    double mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+
+    // Get window size
+    int windowWidth, windowHeight;
+    glfwGetWindowSize(window, &windowWidth, &windowHeight);
+
+// Normalize mouse coordinates
+//    float u = static_cast<float>(mouseX) / static_cast<float>(windowWidth);
+    float u = (float) mouseX / windowWidth;
+    float v = (float) 1.0f - mouseY / windowHeight;
+//    float v = 1.0f - static_cast<float>(mouseY) / static_cast<float>(windowHeight); // Invert Y-axis
+
+
+    glUseProgram(addDyeShaderProgram);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    GLuint mousePosLoc = glGetUniformLocation(addDyeShaderProgram, "mousePos");
+    GLuint dyeRadiusLoc = glGetUniformLocation(addDyeShaderProgram, "dyeRadius");
+    GLuint dyeColorLoc = glGetUniformLocation(addDyeShaderProgram, "dyeColor");
+    GLuint addDyeLoc = glGetUniformLocation(addDyeShaderProgram, "addDye");
+
+    glUniform2f(mousePosLoc, u, v);
+    glUniform1f(dyeRadiusLoc, 0.1);
+    GLfloat dyeColor[3] = { 0.2f, 0.0f, 0.0f };
+    glUniform3fv(dyeColorLoc, 1, dyeColor);
+    glUniform1i(addDyeLoc, click);
+
+    glViewport(0, 0, GRID_SIZE, GRID_SIZE);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+}
+
 int main() {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
@@ -94,9 +143,9 @@ int main() {
     // Compile shaders and create program
     GLuint shaderProgram = createShaderProgram("../shader.vert", "../shader.frag");
     GLuint whiteShaderProgram = createShaderProgram("../whiteShader.vert", "../whiteShader.frag");
+    addDyeShaderProgram = createShaderProgram("../shader.vert", "../addDyeShader.frag");
 
     // Create VAO, VBO, EBO
-    GLuint VAO, VBO, EBO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
@@ -117,24 +166,14 @@ int main() {
 
     // Create textures
     glActiveTexture(GL_TEXTURE0);
-    GLuint texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    // Create a grid of white pixels
-    float white[GRID_SIZE * GRID_SIZE * 4]; // RGBA
-    for (int i = 0; i < GRID_SIZE * GRID_SIZE; ++i) {
-        white[i * 4] = 1.0f;     // R
-        white[i * 4 + 1] = 1.0f; // G
-        white[i * 4 + 2] = 1.0f; // B
-        white[i * 4 + 3] = 1.0f; // A
-    }
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 
     // Create framebuffer
-    GLuint framebuffer;
     glGenFramebuffers(1, &framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
@@ -150,39 +189,38 @@ int main() {
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+            std::cout << "Mouse clicked!" << std::endl;
+            addDye(window, true);
+        } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_RELEASE) {
+            addDye(window, false);
+        }
+
+
         // First pass: render to framebuffer
-        glViewport(0, 0, GRID_SIZE, GRID_SIZE);
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glDisable(GL_DEPTH_TEST);
-
-        glUseProgram(whiteShaderProgram);
-        GLint inputTextureLocation = glGetUniformLocation(shaderProgram, "inputTexture");
-//        glUniform1i(inputTextureLocation, 0);  // Texture unit 0
+//        glViewport(0, 0, GRID_SIZE, GRID_SIZE);
+//        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+//        glClear(GL_COLOR_BUFFER_BIT);
 //
-//        glActiveTexture(GL_TEXTURE0);
-//        glBindTexture(GL_TEXTURE_2D, texture);
+//        glUseProgram(whiteShaderProgram);
+//
+//        glBindVertexArray(VAO);
+//        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+//        glBindVertexArray(0);
 
-        glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
 
+        // --- Debug: Read pixels from the framebuffer (starting from the bottom-left corner) ///
+//        unsigned char* pixels = new unsigned char[GRID_SIZE * GRID_SIZE * 3];  // 3 bytes for RGB
 
-        // Allocate buffer to store pixel data (e.g., RGB)
-        unsigned char* pixels = new unsigned char[GRID_SIZE * GRID_SIZE * 3];  // 3 bytes for RGB
+//        glReadPixels(0, 0, GRID_SIZE, GRID_SIZE, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+//
+//        std::cout << "First pixel (RGB): "
+//                  << (int)pixels[0] << ", "
+//                  << (int)pixels[1] << ", "
+//                  << (int)pixels[2] << std::endl;
 
-// Read pixels from the framebuffer (starting from the bottom-left corner)
-        glReadPixels(0, 0, GRID_SIZE, GRID_SIZE, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-
-// Now you can inspect the pixel data or save it to a file
-// For example, you can print the first pixel's RGB values:
-        std::cout << "First pixel (RGB): "
-                  << (int)pixels[0] << ", "
-                  << (int)pixels[1] << ", "
-                  << (int)pixels[2] << std::endl;
-
-// Don't forget to free the allocated memory when you're done
-        delete[] pixels;
+//        delete[] pixels;
+        // ---//
 
         // Second pass: render to screen
         int width, height;
@@ -193,6 +231,7 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(shaderProgram);
 
+        GLint inputTextureLocation = glGetUniformLocation(shaderProgram, "inputTexture");
         glUniform1i(inputTextureLocation, 0);  // Texture unit 0
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
