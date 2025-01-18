@@ -24,6 +24,7 @@ unsigned int quadIndices[] = {
 // Global variables
 GLuint addDyeShaderProgram;
 GLuint advectShaderProgram;
+GLuint jacobiShaderProgram;
 GLuint dyeTexture;
 GLuint velocityTexture;
 GLuint pressureTexture;
@@ -137,7 +138,7 @@ void advect(bool isAdvectDye) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, velocityTexture);
 
-    // Set the uniforms (e.g., timestep, rdx)
+    // Set the uniform variables
     GLuint timestepLoc = glGetUniformLocation(advectShaderProgram, "timestep");
     GLuint rdxLoc = glGetUniformLocation(advectShaderProgram, "rdx");
     GLuint dyeTextureLoc = glGetUniformLocation(advectShaderProgram, "advectedTexture");
@@ -178,6 +179,54 @@ void advect(bool isAdvectDye) {
     glDeleteFramebuffers(1, &tempframebuffer);
 }
 
+void diffuse() {
+    glUseProgram(jacobiShaderProgram);
+    // Bind the velocity texture
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, velocityTexture);
+
+    // Uniform variables
+    GLuint alphaLoc = glGetUniformLocation(jacobiShaderProgram, "alpha");
+    GLuint rBetaLoc = glGetUniformLocation(jacobiShaderProgram, "rBeta");
+    GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
+    GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
+
+    float dx = 1.0 / GRID_SIZE;
+    float nu = 1.0;
+    float timestep = 0.1;
+    // dx = 1.0 / GRID_SIZE;
+    float alpha = 1.0 / (nu * timestep * GRID_SIZE * GRID_SIZE);
+    glUniform1f(alphaLoc, alpha);
+    glUniform1f(rBetaLoc, 1.0 / ((4 + alpha)));
+    glUniform1i(xLoc, 1);
+    glUniform1i(bLoc, 1);
+
+//    GLuint outputTexture;
+
+    // Render texture to framebuffer
+    GLuint tempframebuffer;
+    glGenFramebuffers(1, &tempframebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, tempframebuffer);
+
+    for (int i = 0; i < 50; i++) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTexture, 0);
+
+
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glBindVertexArray(VAO);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+
+    }
+
+    // Unbind the framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    glDeleteFramebuffers(1, &tempframebuffer);
+}
+
+
 int main() {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
@@ -201,9 +250,9 @@ int main() {
 
     // Compile shaders and create program
     GLuint shaderProgram = createShaderProgram("../shader.vert", "../shader.frag");
-    GLuint whiteShaderProgram = createShaderProgram("../whiteShader.vert", "../whiteShader.frag");
     addDyeShaderProgram = createShaderProgram("../shader.vert", "../addDyeShader.frag");
     advectShaderProgram = createShaderProgram("../shader.vert", "../advect.frag");
+    jacobiShaderProgram = createShaderProgram("../shader.vert", "../jacobi.frag");
 
     // Create VAO, VBO, EBO
     glGenVertexArrays(1, &VAO);
@@ -270,14 +319,14 @@ int main() {
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
-            std::cout << "Mouse clicked!" << std::endl;
+//            std::cout << "Mouse clicked!" << std::endl;
             addDye(window, true);
         } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_RELEASE) {
             addDye(window, false);
         }
 
-        advect(dyeTexture);
-//        advect(velocityTexture);
+        advect(true);
+        advect(false);
 
 
 
