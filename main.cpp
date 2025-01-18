@@ -127,33 +127,45 @@ void addDye(GLFWwindow *window, bool click) {
 }
 
 
-void advect(GLuint advectedTexture) {
+void advect(bool isAdvectDye) {
     glUseProgram(advectShaderProgram);
 
     // Bind the velocity and dye textures
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, advectedTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, dyeTexture);
 
-    glActiveTexture(GL_TEXTURE2);
+    glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, velocityTexture);
 
     // Set the uniforms (e.g., timestep, rdx)
     GLuint timestepLoc = glGetUniformLocation(advectShaderProgram, "timestep");
     GLuint rdxLoc = glGetUniformLocation(advectShaderProgram, "rdx");
-    GLuint advectedTextureLoc = glGetUniformLocation(advectShaderProgram, "advectedTexture");
+    GLuint dyeTextureLoc = glGetUniformLocation(advectShaderProgram, "advectedTexture");
     GLuint velocityTextureLoc = glGetUniformLocation(advectShaderProgram, "velocityTexture");
+    GLuint isAdvectDyeLoc = glGetUniformLocation(advectShaderProgram, "isAdvectDye");
 
     glUniform1f(timestepLoc, 0.1);
     glUniform1f(rdxLoc, 1.0f / GRID_SIZE);
-    glUniform1i(advectedTextureLoc, 1);
-    glUniform1i(velocityTextureLoc, 2);
+    glUniform1i(dyeTextureLoc, 0);
+    glUniform1i(velocityTextureLoc, 1);
+    if (isAdvectDye) {
+        glUniform1i(isAdvectDyeLoc, 1);
+    } else {
+        glUniform1i(isAdvectDyeLoc, 0);
+    }
+
 
     // Render texture to framebuffer
     GLuint tempframebuffer;
     glGenFramebuffers(1, &tempframebuffer);
 
     glBindFramebuffer(GL_FRAMEBUFFER, tempframebuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, advectedTexture, 0);
+    if (isAdvectDye) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dyeTexture, 0);
+    } else {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTexture, 0);
+    }
+
     glClear(GL_COLOR_BUFFER_BIT);
 
     glBindVertexArray(VAO);
@@ -162,6 +174,8 @@ void advect(GLuint advectedTexture) {
 
     // Unbind the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    glDeleteFramebuffers(1, &tempframebuffer);
 }
 
 int main() {
@@ -262,7 +276,9 @@ int main() {
             addDye(window, false);
         }
 
-        advect(velocityTexture);
+        advect(dyeTexture);
+//        advect(velocityTexture);
+
 
 
         // First pass: render to framebuffer
