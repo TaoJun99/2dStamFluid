@@ -6,7 +6,6 @@ uniform float timestep;
 uniform float rdx;
 uniform bool isAdvectDye;
 
-
 in vec2 texCoords;
 
 out vec4 fragColor;

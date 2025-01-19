@@ -25,6 +25,7 @@ unsigned int quadIndices[] = {
 GLuint addDyeShaderProgram;
 GLuint advectShaderProgram;
 GLuint jacobiShaderProgram;
+GLuint applyForceShaderProgram;
 GLuint dyeTexture;
 GLuint velocityTexture;
 GLuint pressureTexture;
@@ -91,31 +92,31 @@ void addDye(GLFWwindow *window, bool click) {
     glfwGetWindowSize(window, &windowWidth, &windowHeight);
 
 // Normalize mouse coordinates
-//    float u = static_cast<float>(mouseX) / static_cast<float>(windowWidth);
     float u = (float) mouseX / windowWidth;
     float v = (float) 1.0f - mouseY / windowHeight;
-//    float v = 1.0f - static_cast<float>(mouseY) / static_cast<float>(windowHeight); // Invert Y-axis
-
 
     glUseProgram(addDyeShaderProgram);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, dyeTexture);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dyeTexture, 0);
+
 
     GLuint mousePosLoc = glGetUniformLocation(addDyeShaderProgram, "mousePos");
     GLuint dyeRadiusLoc = glGetUniformLocation(addDyeShaderProgram, "dyeRadius");
     GLuint dyeColorLoc = glGetUniformLocation(addDyeShaderProgram, "dyeColor");
     GLuint addDyeLoc = glGetUniformLocation(addDyeShaderProgram, "addDye");
 
+
+
     glUniform2f(mousePosLoc, u, v);
     glUniform1f(dyeRadiusLoc, 0.1);
-    GLfloat dyeColor[3] = { 0.2f, 0.0f, 0.0f };
+    GLfloat dyeColor[3] = { 0.1f, 0.0f, 0.0f };
     glUniform3fv(dyeColorLoc, 1, dyeColor);
     glUniform1i(addDyeLoc, click);
 
     glViewport(0, 0, GRID_SIZE, GRID_SIZE);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dyeTexture, 0);
     glClear(GL_COLOR_BUFFER_BIT);
 
     glBindVertexArray(VAO);
@@ -131,6 +132,17 @@ void addDye(GLFWwindow *window, bool click) {
 void advect(bool isAdvectDye) {
     glUseProgram(advectShaderProgram);
 
+    // Generate texture to store intermediate results
+    GLfloat zeroData[GRID_SIZE * GRID_SIZE * 4] = {0.0f};
+    GLuint outputTexture;
+    glGenTextures(1, &outputTexture);
+    glBindTexture(GL_TEXTURE_2D, outputTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, zeroData);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
     // Bind the velocity and dye textures
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, dyeTexture);
@@ -138,15 +150,19 @@ void advect(bool isAdvectDye) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, velocityTexture);
 
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, outputTexture);
+
+
     // Set the uniform variables
     GLuint timestepLoc = glGetUniformLocation(advectShaderProgram, "timestep");
     GLuint rdxLoc = glGetUniformLocation(advectShaderProgram, "rdx");
-    GLuint dyeTextureLoc = glGetUniformLocation(advectShaderProgram, "advectedTexture");
+    GLuint dyeTextureLoc = glGetUniformLocation(advectShaderProgram, "dyeTexture");
     GLuint velocityTextureLoc = glGetUniformLocation(advectShaderProgram, "velocityTexture");
     GLuint isAdvectDyeLoc = glGetUniformLocation(advectShaderProgram, "isAdvectDye");
 
     glUniform1f(timestepLoc, 0.1);
-    glUniform1f(rdxLoc, 1.0f / GRID_SIZE);
+    glUniform1f(rdxLoc, 2.0 / GRID_SIZE);
     glUniform1i(dyeTextureLoc, 0);
     glUniform1i(velocityTextureLoc, 1);
     if (isAdvectDye) {
@@ -161,11 +177,7 @@ void advect(bool isAdvectDye) {
     glGenFramebuffers(1, &tempframebuffer);
 
     glBindFramebuffer(GL_FRAMEBUFFER, tempframebuffer);
-    if (isAdvectDye) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dyeTexture, 0);
-    } else {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTexture, 0);
-    }
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, outputTexture, 0);
 
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -173,17 +185,35 @@ void advect(bool isAdvectDye) {
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
+
+    if (isAdvectDye) {
+        glBindTexture(GL_TEXTURE_2D, dyeTexture);
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, velocityTexture);
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
+    }
+
     // Unbind the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glDeleteFramebuffers(1, &tempframebuffer);
+    glDeleteTextures(1, &outputTexture);
 }
 
 void diffuse() {
     glUseProgram(jacobiShaderProgram);
-    // Bind the velocity texture
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, velocityTexture);
+
+    // Generate texture to store intermediate results
+    GLuint velocityTextureTemp;
+    glGenTextures(1, &velocityTextureTemp);
+    glBindTexture(GL_TEXTURE_2D, velocityTextureTemp);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 
     // Uniform variables
     GLuint alphaLoc = glGetUniformLocation(jacobiShaderProgram, "alpha");
@@ -194,23 +224,32 @@ void diffuse() {
     float dx = 1.0 / GRID_SIZE;
     float nu = 1.0;
     float timestep = 0.1;
-    // dx = 1.0 / GRID_SIZE;
-    float alpha = 1.0 / (nu * timestep * GRID_SIZE * GRID_SIZE);
+    float alpha = (dx * dx) / (nu * timestep);
+
     glUniform1f(alphaLoc, alpha);
-    glUniform1f(rBetaLoc, 1.0 / ((4 + alpha)));
-    glUniform1i(xLoc, 1);
+    glUniform1f(rBetaLoc, 1.0f / ((4.0f + alpha)));
     glUniform1i(bLoc, 1);
 
-//    GLuint outputTexture;
 
-    // Render texture to framebuffer
+    // Framebuffer to store results
     GLuint tempframebuffer;
     glGenFramebuffers(1, &tempframebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, tempframebuffer);
 
-    for (int i = 0; i < 50; i++) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTexture, 0);
-
+    int NO_OF_ITERATIONS = 50;
+    for (int i = 0; i < NO_OF_ITERATIONS; i++) {
+        // Alternate between two textures to read & write
+        if (i % 2 == 0) { // Multiple of 2 - input: velocityTexture, output: velocityTextureTemp
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTextureTemp, 0);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, velocityTexture);
+            glUniform1i(xLoc, 1);
+        } else {// input: velocityTextureTemp, output: velocityTexture
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTexture, 0);
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, velocityTextureTemp);
+            glUniform1i(xLoc, 3);
+        }
 
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -220,10 +259,63 @@ void diffuse() {
 
     }
 
+    // Ensure the final result is in velocityTexture
+    if (NO_OF_ITERATIONS % 2 != 0) {
+        glCopyImageSubData(velocityTextureTemp, GL_TEXTURE_2D, 0, 0, 0, 0,
+                           velocityTexture, GL_TEXTURE_2D, 0, 0, 0, 0,
+                           GRID_SIZE, GRID_SIZE, 1);
+    }
+
     // Unbind the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glDeleteFramebuffers(1, &tempframebuffer);
+
+    glDeleteTextures(1, &velocityTextureTemp);
+}
+
+void applyForce(GLFWwindow *window) {
+    // Normalized mouse coordinates
+    double mouseX;
+    double mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+
+    int windowWidth, windowHeight;
+    glfwGetWindowSize(window, &windowWidth, &windowHeight);
+
+    float u = (float) mouseX / windowWidth;
+    float v = (float) 1.0f - mouseY / windowHeight;
+
+    glUseProgram(applyForceShaderProgram);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, velocityTexture);
+
+    GLuint mousePosLoc = glGetUniformLocation(applyForceShaderProgram, "mousePos");
+    GLuint forceDirLoc = glGetUniformLocation(applyForceShaderProgram, "forceDir");
+    GLuint forceRadiusLoc = glGetUniformLocation(applyForceShaderProgram, "forceRadius");
+    GLuint forceStrengthLoc = glGetUniformLocation(applyForceShaderProgram, "forceStrength");
+    GLuint velocityTextureLoc = glGetUniformLocation(applyForceShaderProgram, "velocityTexture");
+
+    glUniform2f(mousePosLoc, u, v);
+    glUniform2f(forceDirLoc, 0.0f, 1.0f);
+    glUniform1f(forceRadiusLoc, 0.2f);
+    glUniform1f(forceStrengthLoc, 5.0f);
+    glUniform1i(velocityTextureLoc, 1);
+
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTexture, 0);
+
+    glViewport(0, 0, GRID_SIZE, GRID_SIZE);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 }
 
 
@@ -253,6 +345,8 @@ int main() {
     addDyeShaderProgram = createShaderProgram("../shader.vert", "../addDyeShader.frag");
     advectShaderProgram = createShaderProgram("../shader.vert", "../advect.frag");
     jacobiShaderProgram = createShaderProgram("../shader.vert", "../jacobi.frag");
+    applyForceShaderProgram = createShaderProgram("../shader.vert", "../applyForce.frag");
+
 
     // Create VAO, VBO, EBO
     glGenVertexArrays(1, &VAO);
@@ -274,10 +368,12 @@ int main() {
     glBindVertexArray(0);
 
     // Create textures
+    GLfloat zeroData[GRID_SIZE * GRID_SIZE * 4] = {0.0f};
+
     glActiveTexture(GL_TEXTURE0);
     glGenTextures(1, &dyeTexture);
     glBindTexture(GL_TEXTURE_2D, dyeTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, zeroData);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -286,7 +382,7 @@ int main() {
     glActiveTexture(GL_TEXTURE1);
     glGenTextures(1, &velocityTexture);
     glBindTexture(GL_TEXTURE_2D, velocityTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, zeroData);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -295,7 +391,7 @@ int main() {
     glActiveTexture(GL_TEXTURE2);
     glGenTextures(1, &pressureTexture);
     glBindTexture(GL_TEXTURE_2D, pressureTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, zeroData);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -316,8 +412,10 @@ int main() {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+
     // Main loop
     while (!glfwWindowShouldClose(window)) {
+
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
 //            std::cout << "Mouse clicked!" << std::endl;
             addDye(window, true);
@@ -325,8 +423,15 @@ int main() {
             addDye(window, false);
         }
 
+
         advect(true);
         advect(false);
+
+//        diffuse();
+
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            applyForce(window);
+        }
 
 
 
