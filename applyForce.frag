@@ -18,14 +18,14 @@ void main() {
 
     // Apply force within the radius
     if (distance < forceRadius) {
-//        float influence = smoothstep(forceRadius, 0.0, distance); // Decay force with distance
-        float influence = distance / forceRadius;
+        float influence = exp(-distance * distance / (2.0 * forceRadius * forceRadius));
         vec2 currentVelocity = texture(velocityTexture, uv).xy;
         vec2 newVelocity = currentVelocity + influence * forceDir * forceStrength;
-//        vec2 newVelocity = currentVelocity + forceDir * forceStrength;
 
         FragColor = vec4(newVelocity, 0.0, 1.0);
     } else {
         FragColor = texture(velocityTexture, uv);
     }
+
+
 }

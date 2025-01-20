@@ -12,7 +12,7 @@ out vec4 fragColor;
 
 void main() {
     vec2 newX = texCoords - timestep * rdx * texture(velocityTexture, texCoords).xy;
-//    newX = clamp(newX, vec2(0.0), vec2(1.0));
+    newX = clamp(newX, vec2(0.0), vec2(1.0));
 
     vec4 advectedValue;
     if (isAdvectDye) {
