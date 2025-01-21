@@ -27,9 +27,12 @@ GLuint advectShaderProgram;
 GLuint jacobiShaderProgram;
 GLuint applyForceShaderProgram;
 GLuint divergenceShaderProgram;
+GLuint gradientSubtractShaderProgram;
 GLuint dyeTexture;
 GLuint velocityTexture;
 GLuint pressureTexture;
+GLuint jacobiTexture1;
+GLuint jacobiTexture2;
 GLuint framebuffer;
 GLuint VAO, VBO, EBO;
 float timeStep = 0.1;
@@ -103,18 +106,20 @@ void addDye(GLFWwindow *window, bool click) {
     glBindTexture(GL_TEXTURE_2D, dyeTexture);
 
 
+    GLuint dyeTextureLoc = glGetUniformLocation(addDyeShaderProgram, "dyeTexture");
     GLuint mousePosLoc = glGetUniformLocation(addDyeShaderProgram, "mousePos");
     GLuint dyeRadiusLoc = glGetUniformLocation(addDyeShaderProgram, "dyeRadius");
     GLuint dyeColorLoc = glGetUniformLocation(addDyeShaderProgram, "dyeColor");
     GLuint addDyeLoc = glGetUniformLocation(addDyeShaderProgram, "addDye");
 
 
-
+    glUniform1i(dyeTextureLoc, 0);
     glUniform2f(mousePosLoc, u, v);
     glUniform1f(dyeRadiusLoc, 0.1);
     GLfloat dyeColor[3] = { 0.1f, 0.0f, 0.0f };
     glUniform3fv(dyeColorLoc, 1, dyeColor);
     glUniform1i(addDyeLoc, click);
+
 
     glViewport(0, 0, GRID_SIZE, GRID_SIZE);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
@@ -203,81 +208,36 @@ void advect(bool isAdvectDye) {
     glDeleteTextures(1, &outputTexture);
 }
 
-void diffuse() {
-    glUseProgram(jacobiShaderProgram);
-
-    // Generate textures to store intermediate results
-    GLuint tempTexture1;
-    glGenTextures(1, &tempTexture1);
-    glBindTexture(GL_TEXTURE_2D, tempTexture1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    GLuint tempTexture2;
-    glGenTextures(1, &tempTexture2);
-    glBindTexture(GL_TEXTURE_2D, tempTexture2);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-
-    // Uniform variables
-    GLuint alphaLoc = glGetUniformLocation(jacobiShaderProgram, "alpha");
-    GLuint rBetaLoc = glGetUniformLocation(jacobiShaderProgram, "rBeta");
-    GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
-    GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
-
-    float dx = GRID_SIZE;
-    float nu = 5.0;
-    float timestep = 0.1;
-    float alpha = (dx * dx) / (nu * timestep);
-
-    glUniform1f(alphaLoc, alpha);
-    glUniform1f(rBetaLoc, 1.0f / (4.0f + alpha));
-    glUniform1i(bLoc, 1);
-
-
-    // Framebuffer to store results
-//    GLuint tempframebuffer;
-//    glGenFramebuffers(1, &tempframebuffer);
+void jacobi(GLuint outputTexture, GLuint xLoc) {
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
-
     // 1st iteration
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tempTexture1, 0);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, velocityTexture);
-    glUniform1i(xLoc, 1);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, jacobiTexture1, 0);
+
+    if (outputTexture == velocityTexture) {
+        glUniform1i(xLoc, 1);
+    } else if (outputTexture == pressureTexture) {
+        glUniform1i(xLoc, 2);
+    }
 
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
-    int NO_OF_ITERATIONS = 20;
+    int NO_OF_ITERATIONS = 50;
     for (int i = 0; i < NO_OF_ITERATIONS; i++) {
         // Alternate between two textures to read & write
-        if (i % 2 == 0) { // Multiple of 2 - input: tempTexture1, output: tempTexture2
+        if (i % 2 == 0) { // Multiple of 2 - input: jacobiTexture1, output: jacobiTexture2
             // Bind output texture to framebuffer
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tempTexture2, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, jacobiTexture2, 0);
             // Input texture
-            glActiveTexture(GL_TEXTURE3);
-            glBindTexture(GL_TEXTURE_2D, tempTexture1);
             glUniform1i(xLoc, 3);
-        } else {// input: tempTexture2, output: tempTexture1
+        } else {// input: jacobiTexture2, output: jacobiTexture1
             // Bind output texture to framebuffer
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tempTexture1, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, jacobiTexture1, 0);
             // Input texture
-            glActiveTexture(GL_TEXTURE4);
-            glBindTexture(GL_TEXTURE_2D, tempTexture2);
             glUniform1i(xLoc, 4);
         }
-
-//        glClear(GL_COLOR_BUFFER_BIT);
 
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -285,26 +245,35 @@ void diffuse() {
 
     }
 
-    // Copy final texture from framebuffer to velocityTexture
-    glBindTexture(GL_TEXTURE_2D, velocityTexture);
+    // Copy final texture from framebuffer to outputTexture
+    glBindTexture(GL_TEXTURE_2D, outputTexture);
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
 
-    // Ensure the final result is in velocityTexture
-//    if (NO_OF_ITERATIONS % 2 == 0) { // Even iteration - final output in tem
-//        glBindTexture(GL_TEXTURE_2D, velocityTexture);
-//        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
-//    } else {
-//
-//    }
-
-    // Unbind the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-//    glDeleteFramebuffers(1, &tempframebuffer);
-
-    glDeleteTextures(1, &tempTexture1);
-    glDeleteTextures(1, &tempTexture2);
 }
+
+void diffuse() {
+    glUseProgram(jacobiShaderProgram);
+
+    // Uniform variables
+    GLuint alphaLoc = glGetUniformLocation(jacobiShaderProgram, "alpha");
+    GLuint rBetaLoc = glGetUniformLocation(jacobiShaderProgram, "rBeta");
+    GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
+    GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
+
+    float dx = 1.0 / GRID_SIZE;
+    float nu = 1.0;
+    float alpha = (dx * dx) / (nu * timeStep);
+
+    glUniform1f(alphaLoc, alpha);
+    glUniform1f(rBetaLoc, 1.0f / (4.0f + alpha));
+    glUniform1i(bLoc, 1);
+
+    jacobi(velocityTexture, xLoc);
+
+}
+
+
 
 void applyForce(GLFWwindow *window) {
     // Normalized mouse coordinates
@@ -353,8 +322,8 @@ void applyForce(GLFWwindow *window) {
 void divergence(GLuint divergenceTexture) {
     glUseProgram(divergenceShaderProgram);
 
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, velocityTexture);
+//    glActiveTexture(GL_TEXTURE1);
+//    glBindTexture(GL_TEXTURE_2D, velocityTexture);
 
     GLuint wLoc = glGetUniformLocation(divergenceShaderProgram, "w");
     GLuint halfrdxLoc = glGetUniformLocation(divergenceShaderProgram, "halfrdx");
@@ -372,7 +341,42 @@ void divergence(GLuint divergenceTexture) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void subtractGradient() {
+    GLuint outputTexture;
+    glGenTextures(1, &outputTexture);
+    glBindTexture(GL_TEXTURE_2D, outputTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+
+    glUseProgram(gradientSubtractShaderProgram);
+
+    GLuint pLoc = glGetUniformLocation(gradientSubtractShaderProgram, "p");
+    GLuint wLoc = glGetUniformLocation(gradientSubtractShaderProgram, "w");
+    GLuint halfrdxLoc = glGetUniformLocation(gradientSubtractShaderProgram, "halfrdx");
+
+    glUniform1i(pLoc, 2);
+    glUniform1i(wLoc, 1);
+    glUniform1f(halfrdxLoc, 1.0 / (2.0  * GRID_SIZE));
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, outputTexture, 0);
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    glBindTexture(GL_TEXTURE_2D, velocityTexture);
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 void project() {
+    // Divergence of intermediate velocity field w
     GLuint divergenceTexture;
     glGenTextures(1, &divergenceTexture);
     glBindTexture(GL_TEXTURE_2D, divergenceTexture);
@@ -382,7 +386,32 @@ void project() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, divergenceTexture);
+
     divergence(divergenceTexture);
+
+    glUseProgram(jacobiShaderProgram);
+
+    GLuint alphaLoc = glGetUniformLocation(jacobiShaderProgram, "alpha");
+    GLuint rBetaLoc = glGetUniformLocation(jacobiShaderProgram, "rBeta");
+    GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
+    GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
+
+    float dx = GRID_SIZE;
+    float alpha = -(dx * dx);
+    float rBeta = 1.0 /4.0;
+
+
+    glUniform1f(alphaLoc, alpha);
+    glUniform1f(rBetaLoc, rBeta);
+    glUniform1i(bLoc, 5); // divergence of w
+
+    // Solve for pressure field
+    jacobi(pressureTexture, xLoc);
+
+    subtractGradient();
+
 }
 
 int main() {
@@ -413,6 +442,7 @@ int main() {
     jacobiShaderProgram = createShaderProgram("../shader.vert", "../jacobi.frag");
     applyForceShaderProgram = createShaderProgram("../shader.vert", "../applyForce.frag");
     divergenceShaderProgram = createShaderProgram("../shader.vert", "../divergence.frag");
+    gradientSubtractShaderProgram = createShaderProgram("../shader.vert", "../subtractGradient.frag");
 
 
     // Create VAO, VBO, EBO
@@ -463,6 +493,24 @@ int main() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+    glActiveTexture(GL_TEXTURE3);
+    glGenTextures(1, &jacobiTexture1);
+    glBindTexture(GL_TEXTURE_2D, jacobiTexture1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glActiveTexture(GL_TEXTURE4);
+    glGenTextures(1, &jacobiTexture2);
+    glBindTexture(GL_TEXTURE_2D, jacobiTexture2);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, GRID_SIZE, GRID_SIZE, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 
     // Create framebuffer
     glGenFramebuffers(1, &framebuffer);
@@ -497,9 +545,9 @@ int main() {
         advect(true);
 
 
-        diffuse();
+//        diffuse();
 
-        project();
+//        project();
 
 
 

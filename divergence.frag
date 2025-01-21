@@ -13,5 +13,5 @@ void main() {
     vec4 wB = texture(w, texCoords - vec2(0.0, 1.0));
     vec4 wT = texture(w, texCoords + vec2(0.0, 1.0));
 
-    fragColor = vec4(halfrdx * ((wR.x - wL.x) + (wT.y - wB.y)), 0.0, 0.0, 1.0);
+    fragColor = vec4(halfrdx * ((wR.x - wL.x) + (wT.y - wB.y)), 0.0, 0.0, 0.0);
 }
