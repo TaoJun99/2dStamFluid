@@ -2,7 +2,6 @@
 
 uniform float alpha;
 uniform float rBeta;
-uniform float dx;
 uniform sampler2D x;
 uniform sampler2D b;
 
@@ -25,7 +24,8 @@ void main() {
     vec4 xB = texelFetch(x, texCoordInt - ivec2(0, 1), 0);  // Bottom
     vec4 xT = texelFetch(x, texCoordInt + ivec2(0, 1), 0);  // Top
 
-    vec4 bC = texture(b, texCoords);
+//    vec4 bC = texture(b, texCoords);
+    vec4 bC = texelFetch(b, texCoordInt, 0);
 
     fragColor = (xL + xR + xB + xT + alpha * bC) * rBeta;
 }

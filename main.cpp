@@ -157,7 +157,7 @@ void advect(bool isAdvectDye) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, velocityTexture);
 
-    glActiveTexture(GL_TEXTURE3);
+    glActiveTexture(GL_TEXTURE5);
     glBindTexture(GL_TEXTURE_2D, outputTexture);
 
 
@@ -262,7 +262,7 @@ void diffuse() {
     GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
 
     float dx = 1.0 / GRID_SIZE;
-    float nu = 1.0;
+    float nu = 0.001;
     float alpha = (dx * dx) / (nu * timeStep);
 
     glUniform1f(alphaLoc, alpha);
@@ -299,7 +299,7 @@ void applyForce(GLFWwindow *window) {
     GLuint velocityTextureLoc = glGetUniformLocation(applyForceShaderProgram, "velocityTexture");
 
     glUniform2f(mousePosLoc, u, v);
-    glUniform2f(forceDirLoc, 0.0f, 1.0f);
+    glUniform2f(forceDirLoc, 1.0f, 1.0f);
     glUniform1f(forceRadiusLoc, 0.1f);
     glUniform1f(forceStrengthLoc, 1.0f);
     glUniform1i(velocityTextureLoc, 1);
@@ -545,7 +545,7 @@ int main() {
         advect(true);
 
 
-//        diffuse();
+        diffuse();
 
 //        project();
 
@@ -586,7 +586,7 @@ int main() {
         glUseProgram(shaderProgram);
 
         GLint inputTextureLocation = glGetUniformLocation(shaderProgram, "inputTexture");
-        glUniform1i(inputTextureLocation, 1);  // Texture unit 0: dyeTexture
+        glUniform1i(inputTextureLocation, 0);  // Texture unit 0: dyeTexture
 //        glActiveTexture(GL_TEXTURE0);
 //        glBindTexture(GL_TEXTURE_2D, dyeTexture);
 
