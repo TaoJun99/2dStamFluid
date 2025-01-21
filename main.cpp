@@ -301,7 +301,7 @@ void applyForce(GLFWwindow *window) {
     glUniform2f(mousePosLoc, u, v);
     glUniform2f(forceDirLoc, 1.0f, 1.0f);
     glUniform1f(forceRadiusLoc, 0.1f);
-    glUniform1f(forceStrengthLoc, 1.0f);
+    glUniform1f(forceStrengthLoc, 3.0f);
     glUniform1i(velocityTextureLoc, 1);
 
 
@@ -547,7 +547,7 @@ int main() {
 
         diffuse();
 
-//        project();
+        project();
 
 
 
