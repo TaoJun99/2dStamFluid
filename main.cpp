@@ -28,6 +28,7 @@ GLuint jacobiShaderProgram;
 GLuint applyForceShaderProgram;
 GLuint divergenceShaderProgram;
 GLuint gradientSubtractShaderProgram;
+GLuint boundaryShaderProgram;
 GLuint dyeTexture;
 GLuint velocityTexture;
 GLuint pressureTexture;
@@ -112,7 +113,6 @@ void addDye(GLFWwindow *window, bool click) {
     GLuint dyeColorLoc = glGetUniformLocation(addDyeShaderProgram, "dyeColor");
     GLuint addDyeLoc = glGetUniformLocation(addDyeShaderProgram, "addDye");
 
-
     glUniform1i(dyeTextureLoc, 0);
     glUniform2f(mousePosLoc, u, v);
     glUniform1f(dyeRadiusLoc, 0.1);
@@ -135,8 +135,32 @@ void addDye(GLFWwindow *window, bool click) {
 
 }
 
+void applyBoundaryConditions(GLuint texture, bool isPressure) {
+    glUseProgram(boundaryShaderProgram);
 
-void advect(bool isAdvectDye) {
+    GLuint scaleLoc = glGetUniformLocation(boundaryShaderProgram, "scale");
+    GLuint textureLoc = glGetUniformLocation(boundaryShaderProgram, "texture");
+
+    if (isPressure) {
+        glUniform1f(scaleLoc, 1.0);
+    } else {
+        glUniform1f(scaleLoc, -1.0);
+    }
+    glUniform1i(textureLoc, texture);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_LINE_LOOP, 0, 4);
+    glBindVertexArray(0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+}
+
+
+void advect(GLuint texture) {
     glUseProgram(advectShaderProgram);
 
     // Generate texture to store intermediate results
@@ -172,9 +196,9 @@ void advect(bool isAdvectDye) {
     glUniform1f(rdxLoc, 1.0 / GRID_SIZE);
     glUniform1i(dyeTextureLoc, 0);
     glUniform1i(velocityTextureLoc, 1);
-    if (isAdvectDye) {
+    if (texture == dyeTexture) {
         glUniform1i(isAdvectDyeLoc, 1);
-    } else {
+    } else if (texture == velocityTexture) {
         glUniform1i(isAdvectDyeLoc, 0);
     }
 
@@ -193,13 +217,15 @@ void advect(bool isAdvectDye) {
     glBindVertexArray(0);
 
 
-    if (isAdvectDye) {
+    if (texture == dyeTexture) {
         glBindTexture(GL_TEXTURE_2D, dyeTexture);
         glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
-    } else {
+    } else if (texture == velocityTexture) {
         glBindTexture(GL_TEXTURE_2D, velocityTexture);
         glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
     }
+
+    applyBoundaryConditions(texture, false);
 
     // Unbind the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -225,16 +251,21 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
     glBindVertexArray(0);
 
     int NO_OF_ITERATIONS = 50;
+    GLuint currTexture;
     for (int i = 0; i < NO_OF_ITERATIONS; i++) {
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
         // Alternate between two textures to read & write
         if (i % 2 == 0) { // Multiple of 2 - input: jacobiTexture1, output: jacobiTexture2
+            currTexture = jacobiTexture2;
             // Bind output texture to framebuffer
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, jacobiTexture2, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, currTexture, 0);
             // Input texture
             glUniform1i(xLoc, 3);
         } else {// input: jacobiTexture2, output: jacobiTexture1
+            currTexture = jacobiTexture1;
             // Bind output texture to framebuffer
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, jacobiTexture1, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, currTexture, 0);
             // Input texture
             glUniform1i(xLoc, 4);
         }
@@ -242,6 +273,12 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
+
+//        if (outputTexture == velocityTexture) {
+//            applyBoundaryConditions(currTexture, false);
+//        } else if (outputTexture == pressureTexture) {
+//            applyBoundaryConditions(currTexture, true);
+//        }
 
     }
 
@@ -262,7 +299,7 @@ void diffuse() {
     GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
 
     float dx = 1.0 / GRID_SIZE;
-    float nu = 0.001;
+    float nu = 0.0002;
     float alpha = (dx * dx) / (nu * timeStep);
 
     glUniform1f(alphaLoc, alpha);
@@ -299,7 +336,7 @@ void applyForce(GLFWwindow *window) {
     GLuint velocityTextureLoc = glGetUniformLocation(applyForceShaderProgram, "velocityTexture");
 
     glUniform2f(mousePosLoc, u, v);
-    glUniform2f(forceDirLoc, 1.0f, 1.0f);
+    glUniform2f(forceDirLoc, 1.0f, 0.0f);
     glUniform1f(forceRadiusLoc, 0.1f);
     glUniform1f(forceStrengthLoc, 3.0f);
     glUniform1i(velocityTextureLoc, 1);
@@ -314,6 +351,8 @@ void applyForce(GLFWwindow *window) {
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
+
+    applyBoundaryConditions(velocityTexture, false);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -351,7 +390,6 @@ void subtractGradient() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-
     glUseProgram(gradientSubtractShaderProgram);
 
     GLuint pLoc = glGetUniformLocation(gradientSubtractShaderProgram, "p");
@@ -371,6 +409,8 @@ void subtractGradient() {
 
     glBindTexture(GL_TEXTURE_2D, velocityTexture);
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
+
+    applyBoundaryConditions(velocityTexture, false);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -413,6 +453,8 @@ void project() {
     subtractGradient();
 
 }
+
+
 
 int main() {
     if (!glfwInit()) {
@@ -541,13 +583,15 @@ int main() {
             applyForce(window);
         }
 
-        advect(false);
-        advect(true);
-
+        advect(dyeTexture);
+        advect(velocityTexture);
 
         diffuse();
+//        applyBoundaryConditions(velocityTexture, false);
 
         project();
+//        applyBoundaryConditions(velocityTexture, false);
+//        applyBoundaryConditions(pressureTexture, true);
 
 
 
