@@ -155,7 +155,7 @@ void applyBoundaryConditions(GLuint texture, bool isPressure) {
     glDrawArrays(GL_LINE_LOOP, 0, 4);
     glBindVertexArray(0);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+//    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 }
 
@@ -250,10 +250,16 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
+    if (outputTexture == velocityTexture) {
+        applyBoundaryConditions(jacobiTexture1, false);
+    } else if (outputTexture == pressureTexture) {
+        applyBoundaryConditions(jacobiTexture1, true);
+    }
+
     int NO_OF_ITERATIONS = 50;
     GLuint currTexture;
     for (int i = 0; i < NO_OF_ITERATIONS; i++) {
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+//        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
         // Alternate between two textures to read & write
         if (i % 2 == 0) { // Multiple of 2 - input: jacobiTexture1, output: jacobiTexture2
@@ -274,11 +280,11 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
-//        if (outputTexture == velocityTexture) {
-//            applyBoundaryConditions(currTexture, false);
-//        } else if (outputTexture == pressureTexture) {
-//            applyBoundaryConditions(currTexture, true);
-//        }
+        if (outputTexture == velocityTexture) {
+            applyBoundaryConditions(currTexture, false);
+        } else if (outputTexture == pressureTexture) {
+            applyBoundaryConditions(currTexture, true);
+        }
 
     }
 
@@ -289,7 +295,7 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void diffuse() {
+void diffuse(GLuint texture) {
     glUseProgram(jacobiShaderProgram);
 
     // Uniform variables
@@ -304,9 +310,15 @@ void diffuse() {
 
     glUniform1f(alphaLoc, alpha);
     glUniform1f(rBetaLoc, 1.0f / (4.0f + alpha));
-    glUniform1i(bLoc, 1);
 
-    jacobi(velocityTexture, xLoc);
+    if (texture == dyeTexture) {
+        glUniform1i(bLoc, 0);
+//        jacobi(dyeTexture, xLoc);
+    } else if (texture == velocityTexture) {
+        glUniform1i(bLoc, 1);
+        jacobi(velocityTexture, xLoc);
+    }
+
 
 }
 
@@ -338,7 +350,7 @@ void applyForce(GLFWwindow *window) {
     glUniform2f(mousePosLoc, u, v);
     glUniform2f(forceDirLoc, 1.0f, 0.0f);
     glUniform1f(forceRadiusLoc, 0.1f);
-    glUniform1f(forceStrengthLoc, 3.0f);
+    glUniform1f(forceStrengthLoc, 1.0f);
     glUniform1i(velocityTextureLoc, 1);
 
 
@@ -583,29 +595,14 @@ int main() {
             applyForce(window);
         }
 
-        advect(dyeTexture);
         advect(velocityTexture);
+        advect(dyeTexture);
 
-        diffuse();
-//        applyBoundaryConditions(velocityTexture, false);
+
+        diffuse(velocityTexture);
+        diffuse(dyeTexture);
 
         project();
-//        applyBoundaryConditions(velocityTexture, false);
-//        applyBoundaryConditions(pressureTexture, true);
-
-
-
-        // First pass: render to framebuffer
-//        glViewport(0, 0, GRID_SIZE, GRID_SIZE);
-//        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-//        glClear(GL_COLOR_BUFFER_BIT);
-//
-//        glUseProgram(whiteShaderProgram);
-//
-//        glBindVertexArray(VAO);
-//        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-//        glBindVertexArray(0);
-
 
         // --- Debug: Read pixels from the framebuffer (starting from the bottom-left corner) ///
 //        unsigned char* pixels = new unsigned char[GRID_SIZE * GRID_SIZE * 3];  // 3 bytes for RGB
@@ -653,4 +650,3 @@ int main() {
     glfwTerminate();
     return 0;
 }
-
