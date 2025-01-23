@@ -6,7 +6,7 @@
 #include <iostream>
 
 // Grid dimensions
-const int GRID_SIZE = 128;
+const int GRID_SIZE = 256;
 
 // Fullscreen Quad Vertices
 float quadVertices[] = {
@@ -36,7 +36,7 @@ GLuint jacobiTexture1;
 GLuint jacobiTexture2;
 GLuint framebuffer;
 GLuint VAO, VBO, EBO;
-float timeStep = 0.1;
+float timeStep = 0.01;
 
 GLuint compileShader(const std::string& source, GLenum shaderType) {
     GLuint shader = glCreateShader(shaderType);
@@ -140,6 +140,7 @@ void applyBoundaryConditions(GLuint texture, bool isPressure) {
 
     GLuint scaleLoc = glGetUniformLocation(boundaryShaderProgram, "scale");
     GLuint textureLoc = glGetUniformLocation(boundaryShaderProgram, "texture");
+    GLuint gridSizeLoc = glGetUniformLocation(boundaryShaderProgram, "gridSize");
 
     if (isPressure) {
         glUniform1f(scaleLoc, 1.0);
@@ -147,6 +148,7 @@ void applyBoundaryConditions(GLuint texture, bool isPressure) {
         glUniform1f(scaleLoc, -1.0);
     }
     glUniform1i(textureLoc, texture);
+    glUniform1i(gridSizeLoc, GRID_SIZE);
 
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
@@ -259,7 +261,7 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
     int NO_OF_ITERATIONS = 50;
     GLuint currTexture;
     for (int i = 0; i < NO_OF_ITERATIONS; i++) {
-//        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
         // Alternate between two textures to read & write
         if (i % 2 == 0) { // Multiple of 2 - input: jacobiTexture1, output: jacobiTexture2
@@ -303,6 +305,7 @@ void diffuse(GLuint texture) {
     GLuint rBetaLoc = glGetUniformLocation(jacobiShaderProgram, "rBeta");
     GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
     GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
+    GLuint gridSizeLoc = glGetUniformLocation(jacobiShaderProgram, "gridSize");
 
     float dx = 1.0 / GRID_SIZE;
     float nu = 0.0002;
@@ -310,6 +313,7 @@ void diffuse(GLuint texture) {
 
     glUniform1f(alphaLoc, alpha);
     glUniform1f(rBetaLoc, 1.0f / (4.0f + alpha));
+    glUniform1i(gridSizeLoc, GRID_SIZE);
 
     if (texture == dyeTexture) {
         glUniform1i(bLoc, 0);
@@ -378,9 +382,11 @@ void divergence(GLuint divergenceTexture) {
 
     GLuint wLoc = glGetUniformLocation(divergenceShaderProgram, "w");
     GLuint halfrdxLoc = glGetUniformLocation(divergenceShaderProgram, "halfrdx");
+    GLuint gridSizeLoc = glGetUniformLocation(divergenceShaderProgram, "gridSize");
 
     glUniform1i(wLoc, 1);
     glUniform1f(halfrdxLoc, 1.0 / (2.0  * GRID_SIZE));
+    glUniform1i(gridSizeLoc, GRID_SIZE);
 
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, divergenceTexture, 0);
@@ -407,10 +413,12 @@ void subtractGradient() {
     GLuint pLoc = glGetUniformLocation(gradientSubtractShaderProgram, "p");
     GLuint wLoc = glGetUniformLocation(gradientSubtractShaderProgram, "w");
     GLuint halfrdxLoc = glGetUniformLocation(gradientSubtractShaderProgram, "halfrdx");
+    GLuint gridSizeLoc = glGetUniformLocation(gradientSubtractShaderProgram, "gridSize");
 
     glUniform1i(pLoc, 2);
     glUniform1i(wLoc, 1);
     glUniform1f(halfrdxLoc, 1.0 / (2.0  * GRID_SIZE));
+    glUniform1i(gridSizeLoc, GRID_SIZE);
 
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, outputTexture, 0);
@@ -449,15 +457,16 @@ void project() {
     GLuint rBetaLoc = glGetUniformLocation(jacobiShaderProgram, "rBeta");
     GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
     GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
+    GLuint gridSizeLoc = glGetUniformLocation(jacobiShaderProgram, "gridSize");
 
     float dx = GRID_SIZE;
     float alpha = -(dx * dx);
     float rBeta = 1.0 /4.0;
 
-
     glUniform1f(alphaLoc, alpha);
     glUniform1f(rBetaLoc, rBeta);
     glUniform1i(bLoc, 5); // divergence of w
+    glUniform1i(gridSizeLoc, GRID_SIZE);
 
     // Solve for pressure field
     jacobi(pressureTexture, xLoc);
@@ -497,7 +506,6 @@ int main() {
     applyForceShaderProgram = createShaderProgram("../shader.vert", "../applyForce.frag");
     divergenceShaderProgram = createShaderProgram("../shader.vert", "../divergence.frag");
     gradientSubtractShaderProgram = createShaderProgram("../shader.vert", "../subtractGradient.frag");
-
 
     // Create VAO, VBO, EBO
     glGenVertexArrays(1, &VAO);

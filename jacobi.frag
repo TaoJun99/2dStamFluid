@@ -4,6 +4,7 @@ uniform float alpha;
 uniform float rBeta;
 uniform sampler2D x;
 uniform sampler2D b;
+uniform int gridSize;
 
 in vec2 texCoords;
 
@@ -11,12 +12,7 @@ out vec4 fragColor;
 
 void main() {
     // 1 Jacobi update iteration
-//    vec4 xL = texture(x, texCoords - vec2(1.0, 0.0));
-//    vec4 xR = texture(x, texCoords + vec2(1.0, 0.0));
-//    vec4 xB = texture(x, texCoords - vec2(0.0, 1.0));
-//    vec4 xT = texture(x, texCoords + vec2(0.0, 1.0));
-
-    ivec2 texCoordInt = ivec2(texCoords * 128);  // Convert normalized to integer coordinates
+    ivec2 texCoordInt = ivec2(texCoords * gridSize);  // Convert normalized to integer coordinates
 
     // Fetch neighboring texels
     vec4 xL = texelFetch(x, texCoordInt - ivec2(1, 0), 0);  // Left

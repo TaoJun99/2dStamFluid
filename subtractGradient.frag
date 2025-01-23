@@ -3,17 +3,14 @@
 uniform sampler2D p; // pressure field
 uniform sampler2D w; // velocity
 uniform float halfrdx;
+uniform int gridSize;
 
 
 in vec2 texCoords;
 out vec4 fragColor;
 
 void main() {
-    ivec2 texCoordInt = ivec2(texCoords * 128);
-//    float pL = texture(p, texCoords - vec2(1.0, 0.0)).x;
-//    float pR = texture(p, texCoords + vec2(1.0, 0.0)).x;
-//    float pB = texture(p, texCoords - vec2(0.0, 1.0)).x;
-//    float pT = texture(p, texCoords + vec2(0.0, 1.0)).x;
+    ivec2 texCoordInt = ivec2(texCoords * gridSize);
 
     float pL = texelFetch(p, texCoordInt - ivec2(1, 0), 0).x;  // Left
     float pR = texelFetch(p, texCoordInt + ivec2(1, 0), 0).x;  // Right
