@@ -29,6 +29,7 @@ GLuint applyForceShaderProgram;
 GLuint divergenceShaderProgram;
 GLuint gradientSubtractShaderProgram;
 GLuint boundaryShaderProgram;
+GLuint shootDyeShaderProgram;
 GLuint dyeTexture;
 GLuint velocityTexture;
 GLuint pressureTexture;
@@ -133,6 +134,52 @@ void addDye(GLFWwindow *window, bool click) {
     // Unbind the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+}
+
+void shootDye() {
+    glUseProgram(shootDyeShaderProgram);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, dyeTexture);
+
+    GLuint dyeTextureLoc = glGetUniformLocation(shootDyeShaderProgram, "dyeTexture");
+    GLuint velocityTextureLoc = glGetUniformLocation(shootDyeShaderProgram, "velocityTexture");
+    GLuint outputTextureLoc = glGetUniformLocation(shootDyeShaderProgram, "outputTexture");
+    GLuint dyeColorLoc = glGetUniformLocation(shootDyeShaderProgram, "dyeColor");
+    GLuint isAddDyeLoc = glGetUniformLocation(shootDyeShaderProgram, "isAddDye");
+    GLuint timeLoc = glGetUniformLocation(shootDyeShaderProgram, "time");
+
+    glUniform1i(dyeTextureLoc, 0);
+    glUniform1i(velocityTextureLoc, 1);
+    glUniform1i(outputTextureLoc, 0);
+    GLfloat dyeColor[3] = { 0.0f, 0.5f, 0.5f };
+    glUniform3fv(dyeColorLoc, 1, dyeColor);
+    glUniform1i(isAddDyeLoc, 1);
+    float time = (float)glfwGetTime();
+    glUniform1f(timeLoc, time);
+
+    glViewport(0, 0, GRID_SIZE, GRID_SIZE);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dyeTexture, 0);
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    // Add Velocity
+    glUniform1i(isAddDyeLoc, 0);
+    glUniform1i(outputTextureLoc, 1);
+
+    glViewport(0, 0, GRID_SIZE, GRID_SIZE);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, velocityTexture, 0);
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    // Unbind the framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void applyBoundaryConditions(GLuint texture, bool isPressure) {
@@ -501,6 +548,7 @@ int main() {
     applyForceShaderProgram = createShaderProgram("../shader.vert", "../applyForce.frag");
     divergenceShaderProgram = createShaderProgram("../shader.vert", "../divergence.frag");
     gradientSubtractShaderProgram = createShaderProgram("../shader.vert", "../subtractGradient.frag");
+    shootDyeShaderProgram = createShaderProgram("../shader.vert", "../shootDye.frag");
 
     // Create VAO, VBO, EBO
     glGenVertexArrays(1, &VAO);
@@ -593,6 +641,9 @@ int main() {
         } else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_RELEASE) {
             addDye(window, false);
         }
+
+        shootDye();
+
 
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
             applyForce(window);
