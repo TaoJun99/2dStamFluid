@@ -24,5 +24,5 @@ void main() {
         currentColor.rgb += addedDye;
     }
 
-    fragColor = vec4(currentColor.rgb, 1.0);
+    fragColor = vec4(currentColor.rgb, 0.1);
 }

@@ -1,6 +1,6 @@
 #version 330 core
 
-out vec4 FragColor;
+out vec4 fragColor;
 
 in vec2 texCoords;
 
@@ -9,23 +9,29 @@ uniform vec2 mousePos;      // Normalized mouse position [0, 1]
 uniform vec2 forceDir;      // Direction of the force
 uniform float forceRadius;  // Radius of the force application
 uniform float forceStrength;
+uniform float gridSize;
 
 void main() {
-    vec2 uv = texCoords;
+    ivec2 gridCellIndex = ivec2(floor(texCoords * gridSize));
 
-    // Calculate distance from the mouse position
-    float distance = length(uv - mousePos);
-
-    // Apply force within the radius
-    if (distance < forceRadius) {
-        float influence = exp(-distance * distance / (2.0 * forceRadius * forceRadius));
-        vec2 currentVelocity = texture(velocityTexture, uv).xy;
-        vec2 newVelocity = currentVelocity + influence * forceDir * forceStrength;
-
-        FragColor = vec4(newVelocity, 0.0, 1.0);
+    if (gridCellIndex.x == 0 || gridCellIndex.x == gridSize - 1 ||
+    gridCellIndex.x == 0 || gridCellIndex.x == gridSize - 1) { //Boundary: dont apply force
+        fragColor = texture(velocityTexture, texCoords);
     } else {
-        FragColor = texture(velocityTexture, uv);
-    }
+        // Calculate distance from the mouse position
+        float distance = length(texCoords - mousePos);
 
+        // Apply force within the radius
+        if (distance < forceRadius) {
+            float influence = exp(-distance * distance / (2.0 * forceRadius * forceRadius));
+            vec2 currentVelocity = texture(velocityTexture, texCoords).xy;
+//            vec2 newVelocity = currentVelocity + influence * forceDir * forceStrength;
+            vec2 newVelocity = currentVelocity + influence * normalize(texCoords) * forceStrength; // radial direction
+
+            fragColor = vec4(newVelocity, 0.0, 1.0);
+        } else {
+            fragColor = texture(velocityTexture, texCoords);
+        }
+    }
 
 }

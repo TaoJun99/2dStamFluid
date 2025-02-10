@@ -116,7 +116,7 @@ void addDye(GLFWwindow *window, bool click) {
     glUniform1i(dyeTextureLoc, 0);
     glUniform2f(mousePosLoc, u, v);
     glUniform1f(dyeRadiusLoc, 0.1);
-    GLfloat dyeColor[3] = { 0.1f, 0.0f, 0.0f };
+    GLfloat dyeColor[3] = { 0.0f, 0.5f, 0.5f };
     glUniform3fv(dyeColorLoc, 1, dyeColor);
     glUniform1i(addDyeLoc, click);
 
@@ -136,6 +136,7 @@ void addDye(GLFWwindow *window, bool click) {
 }
 
 void applyBoundaryConditions(GLuint texture, bool isPressure) {
+    return;
     glUseProgram(boundaryShaderProgram);
 
     GLuint scaleLoc = glGetUniformLocation(boundaryShaderProgram, "scale");
@@ -193,15 +194,20 @@ void advect(GLuint texture) {
     GLuint dyeTextureLoc = glGetUniformLocation(advectShaderProgram, "dyeTexture");
     GLuint velocityTextureLoc = glGetUniformLocation(advectShaderProgram, "velocityTexture");
     GLuint isAdvectDyeLoc = glGetUniformLocation(advectShaderProgram, "isAdvectDye");
+    GLuint advectedTextureLoc = glGetUniformLocation(advectShaderProgram, "advectedTexture");
+    GLuint gridSizeLoc = glGetUniformLocation(advectShaderProgram, "gridSize");
 
     glUniform1f(timestepLoc, timeStep);
     glUniform1f(rdxLoc, 1.0 / GRID_SIZE);
     glUniform1i(dyeTextureLoc, 0);
     glUniform1i(velocityTextureLoc, 1);
+    glUniform1f(gridSizeLoc, GRID_SIZE);
     if (texture == dyeTexture) {
         glUniform1i(isAdvectDyeLoc, 1);
+        glUniform1i(advectedTextureLoc, 0);
     } else if (texture == velocityTexture) {
         glUniform1i(isAdvectDyeLoc, 0);
+        glUniform1i(advectedTextureLoc, 1);
     }
 
 
@@ -227,7 +233,6 @@ void advect(GLuint texture) {
         glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
     }
 
-    applyBoundaryConditions(texture, false);
 
     // Unbind the framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -251,12 +256,6 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
-
-    if (outputTexture == velocityTexture) {
-        applyBoundaryConditions(jacobiTexture1, false);
-    } else if (outputTexture == pressureTexture) {
-        applyBoundaryConditions(jacobiTexture1, true);
-    }
 
     int NO_OF_ITERATIONS = 50;
     GLuint currTexture;
@@ -282,12 +281,6 @@ void jacobi(GLuint outputTexture, GLuint xLoc) {
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
-        if (outputTexture == velocityTexture) {
-            applyBoundaryConditions(currTexture, false);
-        } else if (outputTexture == pressureTexture) {
-            applyBoundaryConditions(currTexture, true);
-        }
-
     }
 
     // Copy final texture from framebuffer to outputTexture
@@ -306,6 +299,7 @@ void diffuse(GLuint texture) {
     GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
     GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
     GLuint gridSizeLoc = glGetUniformLocation(jacobiShaderProgram, "gridSize");
+    GLuint scaleLoc = glGetUniformLocation(jacobiShaderProgram, "scale");
 
     float dx = 1.0 / GRID_SIZE;
     float nu = 0.0002;
@@ -313,7 +307,8 @@ void diffuse(GLuint texture) {
 
     glUniform1f(alphaLoc, alpha);
     glUniform1f(rBetaLoc, 1.0f / (4.0f + alpha));
-    glUniform1i(gridSizeLoc, GRID_SIZE);
+    glUniform1f(gridSizeLoc, GRID_SIZE);
+    glUniform1f(scaleLoc, -1); // velocity
 
     if (texture == dyeTexture) {
         glUniform1i(bLoc, 0);
@@ -350,12 +345,14 @@ void applyForce(GLFWwindow *window) {
     GLuint forceRadiusLoc = glGetUniformLocation(applyForceShaderProgram, "forceRadius");
     GLuint forceStrengthLoc = glGetUniformLocation(applyForceShaderProgram, "forceStrength");
     GLuint velocityTextureLoc = glGetUniformLocation(applyForceShaderProgram, "velocityTexture");
+    GLuint gridSizeLoc = glGetUniformLocation(applyForceShaderProgram, "gridSize");
 
     glUniform2f(mousePosLoc, u, v);
     glUniform2f(forceDirLoc, 1.0f, 0.0f);
     glUniform1f(forceRadiusLoc, 0.1f);
     glUniform1f(forceStrengthLoc, 1.0f);
     glUniform1i(velocityTextureLoc, 1);
+    glUniform1f(gridSizeLoc, GRID_SIZE);
 
 
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
@@ -367,8 +364,6 @@ void applyForce(GLFWwindow *window) {
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
-
-    applyBoundaryConditions(velocityTexture, false);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -430,8 +425,6 @@ void subtractGradient() {
     glBindTexture(GL_TEXTURE_2D, velocityTexture);
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, GRID_SIZE, GRID_SIZE);
 
-    applyBoundaryConditions(velocityTexture, false);
-
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
@@ -458,6 +451,7 @@ void project() {
     GLuint xLoc = glGetUniformLocation(jacobiShaderProgram, "x");
     GLuint bLoc = glGetUniformLocation(jacobiShaderProgram, "b");
     GLuint gridSizeLoc = glGetUniformLocation(jacobiShaderProgram, "gridSize");
+    GLuint scaleLoc = glGetUniformLocation(jacobiShaderProgram, "scale");
 
     float dx = GRID_SIZE;
     float alpha = -(dx * dx);
@@ -466,7 +460,8 @@ void project() {
     glUniform1f(alphaLoc, alpha);
     glUniform1f(rBetaLoc, rBeta);
     glUniform1i(bLoc, 5); // divergence of w
-    glUniform1i(gridSizeLoc, GRID_SIZE);
+    glUniform1f(gridSizeLoc, GRID_SIZE);
+    glUniform1f(scaleLoc, 1); //pressure
 
     // Solve for pressure field
     jacobi(pressureTexture, xLoc);
